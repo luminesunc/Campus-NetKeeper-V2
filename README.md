@@ -1,4 +1,15 @@
 \# 🛡️ Campus-NetKeeper V2 (校园网守护神 通用版)
+<img width="525" height="408" alt="微信图片_20260420174707_271_118" src="https://github.com/user-attachments/assets/79dabcdc-3cfa-4030-ac53-3b663446f8a3" />
+
+⚠️ 免责声明 (Disclaimer)
+
+本项目仅供 Python 自动化学习、网络协议分析及技术交流使用。请勿将本工具用于任何高频恶意请求、内网穿透攻击或其他违反学校/企业网络安全服务条款的行为。
+
+因使用者滥用本工具造成的网络账号封禁或其它一切法律与纪律后果，由使用者自行承担，与本项目及开发者无关。
+
+Author    luminesunc
+
+
 
 
 
@@ -86,13 +97,6 @@ pip install playwright -i \[https://pypi.tuna.tsinghua.edu.cn/simple](https://py
 
 python -m PyInstaller -F -w -i tubiao.ico --add-data "tubiao.ico;." xywshs.py
 
-⚠️ 免责声明 (Disclaimer)
-
-本项目仅供 Python 自动化学习、网络协议分析及技术交流使用。请勿将本工具用于任何高频恶意请求、内网穿透攻击或其他违反学校/企业网络安全服务条款的行为。
-
-因使用者滥用本工具造成的网络账号封禁或其它一切法律与纪律后果，由使用者自行承担，与本项目及开发者无关。
-
-Author    luminesunc
 
 
 
