@@ -33,18 +33,26 @@ class SnifferThread(QThread):
                 browser = p.chromium.launch(headless=False, channel="msedge")
                 context = browser.new_context(ignore_https_errors=True)
                 page = context.new_page()
-                captured_data = {}
+
+                # 改为列表，记录所有的动作包
+                captured_requests = []
 
                 def handle_request(request):
+                    # 过滤掉一些无关紧要的静态资源 POST，只抓取可能的登录 API
                     if request.method == "POST" and request.post_data:
-                        captured_data['url'] = request.url
-                        captured_data['headers'] = request.headers
-                        captured_data['payload'] = request.post_data
-                        self.log_signal.emit(f"🔍 捕捉到疑似登录数据包: {request.url[:40]}...")
+                        req_data = {
+                            'url': request.url,
+                            'headers': request.headers,
+                            'payload': request.post_data
+                        }
+                        # 去重，防止同一个包抓多次
+                        if req_data not in captured_requests:
+                            captured_requests.append(req_data)
+                            self.log_signal.emit(f"🔍 捕捉到数据包: {request.url[:40]}...")
 
                 page.on("request", handle_request)
-                self.log_signal.emit("👉 请在弹出的浏览器中，手动输入账号密码并登录！")
-                self.log_signal.emit("⚠️ 登录成功连上网后，请直接关闭该浏览器！")
+                self.log_signal.emit("👉 请手动登录！如果弹出【设备已满】，请点击【继续/同意】！")
+                self.log_signal.emit("⚠️ 确保彻底连上网后，再关闭浏览器！")
 
                 try:
                     page.goto("http://www.msftconnecttest.com/connecttest.txt", wait_until="commit")
@@ -53,16 +61,16 @@ class SnifferThread(QThread):
 
                 page.wait_for_event("close", timeout=0)
 
-                if captured_data:
+                if captured_requests:
                     with open("config.json", "w", encoding="utf-8") as f:
-                        json.dump(captured_data, f, ensure_ascii=False, indent=4)
-                    self.log_signal.emit("✅ 抓包大成功！配置文件已生成: config.json")
+                        # 现在存入的是一个包含多个请求的列表 [req1, req2, ...]
+                        json.dump(captured_requests, f, ensure_ascii=False, indent=4)
+                    self.log_signal.emit(f"✅ 抓包大成功！共记录 {len(captured_requests)} 个关键步骤。")
                 else:
                     self.log_signal.emit("❌ 未能捕捉到登录数据，请重试。")
 
         except Exception as e:
             self.log_signal.emit(f"抓包过程发生异常: {e}")
-
 
 # ==========================================
 # 2. 守护者子线程 (本次新增的核心逻辑！)
@@ -83,41 +91,54 @@ class GuardianThread(QThread):
             return False
 
     def run(self):
-        # 尝试读取配置文件
         try:
             with open("config.json", "r", encoding="utf-8") as f:
                 config = json.load(f)
+
+            # 兼容老版本的单字典 config，统一转为列表处理
+            if isinstance(config, dict):
+                config = [config]
+
         except Exception as e:
             self.log_signal.emit(f"❌ 读取配置失败，请先执行第一步抓包！错误: {e}")
             return
-
-        url = config.get("url")
-        headers = config.get("headers")
-        payload = config.get("payload")
 
         self.log_signal.emit("🛡️ 后台守护进程已启动，开始静默监控...")
 
         while self.is_running:
             if not self.is_connected():
-                self.log_signal.emit("⚠️ 检测到网络断开！准备发送重连请求...")
-                try:
-                    # 关键：用之前抓包偷到的数据，伪装成浏览器发出去
-                    res = requests.post(url, headers=headers, data=payload.encode('utf-8'), timeout=5)
-                    self.log_signal.emit(f"✅ 重连包发送完毕！服务器返回状态码: {res.status_code}")
-                    time.sleep(5)  # 给网络恢复一点时间
-                except Exception as e:
-                    self.log_signal.emit(f"❌ 重连请求发送异常: {e}")
+                self.log_signal.emit("⚠️ 检测到网络断开！准备执行重连序列...")
 
-            # 把 30 秒的休眠拆成 1 秒 1 秒的，方便用户随时点“停止”按钮中断它
+                # 遍历执行所有保存的 POST 请求
+                for index, step in enumerate(config):
+                    if not self.is_running:
+                        break
+                    try:
+                        self.log_signal.emit(f"➡️ 正在发送第 {index + 1} 步请求...")
+                        res = requests.post(
+                            step['url'],
+                            headers=step['headers'],
+                            data=step['payload'].encode('utf-8'),
+                            timeout=5
+                        )
+                        # 稍微等一下，给服务器处理多步逻辑的时间
+                        time.sleep(1.5)
+                    except Exception as e:
+                        self.log_signal.emit(f"❌ 第 {index + 1} 步发送异常: {e}")
+
+                time.sleep(3)  # 给网络恢复一点时间
+                if self.is_connected():
+                    self.log_signal.emit("🎉 网络已恢复！(弹窗已被穿透)")
+                else:
+                    self.log_signal.emit("🤔 依然断网，可能校园网重置了 Token，建议重新获取配置。")
+
             for _ in range(30):
                 if not self.is_running:
                     break
                 time.sleep(1)
 
     def stop(self):
-        """提供给主界面调用的停止方法"""
         self.is_running = False
-
 
 # ==========================================
 # 3. 主界面 GUI
